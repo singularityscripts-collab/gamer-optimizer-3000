@@ -18,7 +18,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node node_modules/electron/install.js
-      - name: Build e publicar release (gera latest.yml para o auto-update)
-        run: npx electron-builder --win --publish always
+      - name: Compilar instalador
+        run: npx electron-builder --win --publish never
+      # Publicar pelo gh evita a condição de corrida do electron-builder, que criava releases duplicados.
+      - name: Publicar release (o latest.yml alimenta o auto update)
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "${GITHUB_REF_NAME#v}" --generate-notes \
+            dist/*.exe dist/*.exe.blockmap dist/latest.yml
