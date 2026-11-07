@@ -1,0 +1,63 @@
+{
+  "name": "gamer-optimizer-3000",
+  "productName": "Gamer Optimizer 3000",
+  "version": "1.0.0",
+  "description": "Otimizador de PC para Windows: fecha tarefas inúteis, limpa a RAM, remove lixo e aplica ajustes de desempenho.",
+  "main": "main.js",
+  "author": "huginhohenriquerl-ops",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/huginhohenriquerl-ops/gamer-optimizer-3000.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "icon": "node tools/make-icon.js",
+    "dist": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
+  },
+  "build": {
+    "appId": "com.huginhohenriquerl.gameroptimizer3000",
+    "productName": "Gamer Optimizer 3000",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**",
+      "renderer/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "highestAvailable"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "artifactName": "Gamer-Optimizer-3000-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "huginhohenriquerl-ops",
+        "repo": "gamer-optimizer-3000"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:">
+<title>Gamer Optimizer 3000</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="bg-glow g1"></div><div class="bg-glow g2"></div>
+<div class="app">
+  <header class="titlebar">
+    <div class="brand"><img src="../build/icon.png" alt=""><span>Gamer Optimizer <b>3000</b></span><em id="ver"></em></div>
+    <div class="win-btns">
+      <button id="wMin" aria-label="Minimizar"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button id="wMax" aria-label="Maximizar"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg></button>
+      <button id="wClose" class="close" aria-label="Fechar"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="sidebar" id="nav"></nav>
+
+  <main>
+    <!-- PAINEL -->
+    <section class="view active" id="v-dashboard">
+      <div class="hero card">
+        <div class="hero-text">
+          <h1>Turbine seu PC em um clique</h1>
+          <p>Fecha tarefas inúteis, limpa a RAM, remove lixo e aplica ajustes de desempenho para jogos.</p>
+          <button class="big" id="optAll"><span class="bolt"></span><span id="optAllLabel">OTIMIZAR TUDO</span></button>
+          <div class="admin-note" id="adminNote"></div>
+        </div>
+        <div class="steps" id="steps">
+          <div class="step" data-s="1"><i></i><span>Fechar processos inúteis</span><b></b></div>
+          <div class="step" data-s="2"><i></i><span>Ajustes de desempenho</span><b></b></div>
+          <div class="step" data-s="3"><i></i><span>Limpar arquivos inúteis</span><b></b></div>
+          <div class="step" data-s="4"><i></i><span>Limpar memória RAM</span><b></b></div>
+        </div>
+      </div>
+      <div class="gauges">
+        <div class="card gauge" id="g-cpu"></div>
+        <div class="card gauge" id="g-ram"></div>
+        <div class="card gauge" id="g-disk"></div>
+      </div>
+      <div class="result card" id="result" hidden>
+        <h3>Resultado da otimização</h3>
+        <div class="kpis" id="kpis"></div>
+      </div>
+      <div class="sysinfo card" id="sysinfo"></div>
+    </section>
+
+    <!-- PROCESSOS -->
+    <section class="view" id="v-processes">
+      <div class="head"><div><h2>Processos</h2><p>Marque o que quer encerrar. Itens protegidos do Windows não podem ser fechados.</p></div>
+        <div class="actions"><button class="btn ghost" id="pRefresh">Atualizar</button><button class="btn ghost" id="pSelSuggest">Selecionar sugeridos</button><button class="btn danger" id="pKill">Encerrar selecionados</button></div></div>
+      <div class="card table" id="procTable"></div>
+    </section>
+
+    <!-- MEMÓRIA -->
+    <section class="view" id="v-memory">
+      <div class="head"><div><h2>Memória RAM</h2><p>Reduz o conjunto de trabalho dos processos e limpa a lista de espera (standby) para liberar RAM.</p></div></div>
+      <div class="card memcard">
+        <div class="gauge big" id="g-ram2"></div>
+        <div class="memtext">
+          <div class="kv"><span>Em uso</span><b id="mUsed">—</b></div>
+          <div class="kv"><span>Livre</span><b id="mFree">—</b></div>
+          <div class="kv"><span>Total</span><b id="mTotal">—</b></div>
+          <button class="btn primary" id="memClean">Limpar RAM agora</button>
+          <div class="note" id="memNote"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIMPEZA -->
+    <section class="view" id="v-clean">
+      <div class="head"><div><h2>Limpeza de arquivos</h2><p>Remove temporários, caches e lixo. Nada de documentos, senhas ou histórico é apagado.</p></div>
+        <div class="actions"><button class="btn ghost" id="cScan">Analisar</button><button class="btn primary" id="cRun">Limpar selecionados</button></div></div>
+      <div class="card list" id="cleanList"></div>
+    </section>
+
+    <!-- INICIALIZAÇÃO -->
+    <section class="view" id="v-startup">
+      <div class="head"><div><h2>Programas na inicialização</h2><p>Desative o que não precisa abrir junto com o Windows para ligar o PC mais rápido.</p></div>
+        <div class="actions"><button class="btn ghost" id="sRefresh">Atualizar</button></div></div>
+      <div class="card list" id="startList"></div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section class="view" id="v-tweaks">
+      <div class="head"><div><h2>Ajustes de desempenho</h2><p>Otimizações para jogos e resposta do sistema. Todas podem ser revertidas.</p></div></div>
+      <div class="card list" id="tweakList"></div>
+    </section>
+
+    <!-- ATUALIZAÇÃO -->
+    <section class="view" id="v-update">
+      <div class="head"><div><h2>Atualizações</h2><p>O app verifica sozinho novas versões no GitHub e se atualiza.</p></div></div>
+      <div class="card upd">
+        <div class="upd-ico" id="updIco"></div>
+        <div class="upd-body">
+          <h3 id="updTitle">Verificando…</h3>
+          <p id="updSub"></p>
+          <div class="bar" id="updBar" hidden><div></div></div>
+          <div class="actions"><button class="btn ghost" id="updCheck">Verificar agora</button><button class="btn primary" id="updInstall" hidden>Reiniciar e instalar</button><button class="btn ghost" id="repo">Ver no GitHub</button></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+<script src="mock.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>
