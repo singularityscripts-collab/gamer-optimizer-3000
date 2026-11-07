@@ -73,8 +73,7 @@ const AUTO = new Set(['onedrive', 'onedrivestandalone', 'teams', 'ms-teams', 'ms
 // Sugeridos como dispensáveis, mas só fecham se você marcar.
 const SUGGEST = new Set(['spotify', 'discord', 'steam', 'steamwebhelper', 'epicgameslauncher', 'epicwebhelper', 'battle.net',
   'origin', 'eadesktop', 'ealauncher', 'upc', 'ubisoftconnect', 'galaxyclient', 'whatsapp', 'telegram', 'slack', 'zoom',
-  'dropbox', 'googledrivefs', 'icloudservices', 'applemobiledevicehelper', 'onenote', 'outlook', 'winword', 'excel', 'powerpnt',
-  'chrome', 'msedge', 'firefox', 'opera', 'brave']);
+  'dropbox', 'googledrivefs', 'icloudservices', 'applemobiledevicehelper', 'chrome', 'msedge', 'firefox', 'opera', 'brave']);
 // Nunca encerrados.
 const PROTECTED = new Set(['system', 'idle', 'registry', 'smss', 'csrss', 'wininit', 'winlogon', 'services', 'lsass', 'svchost',
   'dwm', 'explorer', 'fontdrvhost', 'sihost', 'taskhostw', 'ctfmon', 'runtimebroker', 'startmenuexperiencehost',
@@ -115,22 +114,27 @@ async function listProcesses() {
   return out.sort((a, b) => b.mem - a.mem);
 }
 
-async function killProcesses(names) {
-  const list = await listProcesses();
+// Encerra pelos PIDs listados (não por nome + /T, que derrubaria árvores inteiras, ex.: um jogo aberto pela Steam).
+async function killProcesses(names, list) {
+  list = list || await listProcesses();
   const allowed = new Map(list.filter((p) => p.kind !== 'protected').map((p) => [p.name.toLowerCase(), p]));
   let killed = 0, freed = 0; const closed = [];
   for (const name of names) {
     const p = allowed.get(String(name).toLowerCase());
     if (!p) continue;
-    const r = await run('taskkill', ['/F', '/T', '/IM', p.name + '.exe'], 20000);
-    if (r.ok) { killed += p.count; freed += p.mem; closed.push(p.name); }
+    const args = ['/F'];
+    for (const pid of p.pids) args.push('/PID', String(pid));
+    const r = await run('taskkill', args, 20000);
+    // taskkill escreve cada sucesso em stdout e cada falha em stderr (texto localizado, então contamos linhas).
+    const ok = r.stdout.split(/\r?\n/).filter((l) => l.trim()).length;
+    if (ok) { killed += ok; freed += Math.round(p.mem * Math.min(1, ok / p.count)); closed.push(p.name); }
   }
   return { killed, freed, closed };
 }
 
 async function killAuto() {
   const list = await listProcesses();
-  return killProcesses(list.filter((p) => p.kind === 'auto').map((p) => p.name));
+  return killProcesses(list.filter((p) => p.kind === 'auto').map((p) => p.name), list);
 }
 
 /* ------------------------------ memória ------------------------------ */
@@ -249,38 +253,37 @@ async function cleanJunk(ids) {
 }
 
 /* ------------------------------ inicialização ------------------------------ */
-const RUN_HKCU = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-const RUN_HKLM = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-const APPR = '\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
+// Mesma técnica do Gerenciador de Tarefas: o item continua lá, só fica marcado como desativado em StartupApproved.
+const APPR = 'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved';
+const STARTUP_LOCS = {
+  hkcu: { kind: 'reg', src: 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', appr: `HKCU:\\${APPR}\\Run`, scope: 'Usuário' },
+  hklm: { kind: 'reg', src: 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', appr: `HKLM:\\${APPR}\\Run`, scope: 'Sistema', admin: true },
+  hklm32: { kind: 'reg', src: 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run', appr: `HKLM:\\${APPR}\\Run32`, scope: 'Sistema', admin: true },
+  folder: { kind: 'dir', src: "[Environment]::GetFolderPath('Startup')", appr: `HKCU:\\${APPR}\\StartupFolder`, scope: 'Pasta' },
+  common: { kind: 'dir', src: "[Environment]::GetFolderPath('CommonStartup')", appr: `HKLM:\\${APPR}\\StartupFolder`, scope: 'Pasta', admin: true },
+};
 async function listStartup() {
-  const script = `
-$out = @()
-$locs = @(
-  @{ p = '${RUN_HKCU}'; a = 'HKCU:${APPR}'; s = 'Usuário'; h = 'HKCU' },
-  @{ p = '${RUN_HKLM}'; a = 'HKLM:${APPR}'; s = 'Sistema'; h = 'HKLM' }
-)
-foreach ($l in $locs) {
-  if (-not (Test-Path $l.p)) { continue }
-  $k = Get-Item $l.p
-  foreach ($n in $k.GetValueNames()) {
-    if (-not $n) { continue }
-    $en = $true
-    try { $b = (Get-ItemProperty $l.a -ErrorAction Stop).$n; if ($b -and ($b[0] -band 1)) { $en = $false } } catch {}
-    $out += [pscustomobject]@{ name = $n; cmd = [string]$k.GetValue($n); scope = $l.s; hive = $l.h; enabled = $en }
-  }
-}
-ConvertTo-Json -InputObject @($out) -Compress`;
-  const r = await ps(script, 30000);
+  const blocks = Object.entries(STARTUP_LOCS).map(([id, l]) => {
+    const read = l.kind === 'reg'
+      ? `if (Test-Path '${l.src}') { $k = Get-Item '${l.src}'; foreach ($n in $k.GetValueNames()) { if ($n) { $items += ,@($n, [string]$k.GetValue($n)) } } }`
+      : `$d = ${l.src}; if ($d -and (Test-Path $d)) { Get-ChildItem $d -File | Where-Object { $_.Name -ne 'desktop.ini' } | ForEach-Object { $items += ,@($_.Name, $_.FullName) } }`;
+    return `$items = @(); ${read}
+$ap = $null; try { $ap = Get-ItemProperty '${l.appr}' -ErrorAction Stop } catch {}
+foreach ($it in $items) { $en = $true; if ($ap) { $b = $ap.($it[0]); if ($b -and ($b[0] -band 1)) { $en = $false } }
+  $out += [pscustomobject]@{ loc = '${id}'; name = $it[0]; cmd = $it[1]; scope = '${l.scope}'; enabled = $en } }`;
+  });
+  const r = await ps(`$out = @()\n${blocks.join('\n')}\nConvertTo-Json -InputObject @($out) -Compress`, 30000);
   return parseJson(r.stdout, []) || [];
 }
-async function setStartup(hive, name, enable) {
-  if (!['HKCU', 'HKLM'].includes(hive)) return { ok: false, msg: 'Hive inválido' };
-  if (hive === 'HKLM' && !(await isAdmin())) return { ok: false, msg: 'Requer administrador para alterar itens do sistema.' };
+async function setStartup(loc, name, enable) {
+  const l = STARTUP_LOCS[loc];
+  if (!l) return { ok: false, msg: 'Local inválido' };
+  if (l.admin && !(await isAdmin())) return { ok: false, msg: 'Requer administrador para alterar itens do sistema.' };
   const bytes = enable ? '2,0,0,0,0,0,0,0,0,0,0,0' : '3,0,0,0,0,0,0,0,0,0,0,0';
-  const r = await ps(`$a = '${hive}:${APPR}'
+  const r = await ps(`$a = '${l.appr}'
 if (-not (Test-Path $a)) { New-Item $a -Force | Out-Null }
-Set-ItemProperty -Path $a -Name '${q(name)}' -Value ([byte[]](${bytes})) -Type Binary`, 20000);
-  return { ok: r.ok, msg: r.ok ? '' : r.stderr || 'Falhou' };
+Set-ItemProperty -Path $a -Name '${q(name)}' -Value ([byte[]](${bytes})) -Type Binary -ErrorAction Stop`, 20000);
+  return { ok: r.ok, msg: r.ok ? '' : r.stderr.trim() || 'Falhou' };
 }
 
 /* ------------------------------ ajustes ------------------------------ */
@@ -330,10 +333,15 @@ async function applyTweak(id, on) {
       const cur = await run('powercfg', ['/getactivescheme']);
       const m = /([0-9a-f-]{36})/i.exec(cur.stdout);
       if (m && !state.prevPower) state.prevPower = m[1];
-      let guid = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c';
-      const dup = await run('powercfg', ['-duplicatescheme', 'e9a42b02-d5df-448d-aa00-03f14749eb61']);
-      const g = /([0-9a-f-]{36})/i.exec(dup.stdout);
-      if (g) guid = g[1];
+      // Reaproveita o plano criado antes: duplicar a cada execução enchia o Windows de planos repetidos.
+      const list = (await run('powercfg', ['/list'])).stdout.toLowerCase();
+      let guid = state.ultimatePower && list.includes(state.ultimatePower) ? state.ultimatePower : null;
+      if (!guid) {
+        const dup = await run('powercfg', ['-duplicatescheme', 'e9a42b02-d5df-448d-aa00-03f14749eb61']);
+        const g = /([0-9a-f-]{36})/i.exec(dup.stdout);
+        if (g) guid = state.ultimatePower = g[1].toLowerCase();
+      }
+      guid = guid || '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c';
       let r = await run('powercfg', ['/setactive', guid]);
       if (!r.ok) r = await run('powercfg', ['/setactive', '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c']);
       ok = r.ok; msg = r.stderr;
@@ -348,7 +356,9 @@ async function applyTweak(id, on) {
   if ($svc -and $svc.Status -eq 'Running') { try { Stop-Service -Name $s -Force -ErrorAction Stop; $stopped += $s } catch {} }
 }
 ConvertTo-Json -InputObject @($stopped) -Compress`, 60000);
-      state.stoppedServices = parseJson(r.stdout, []) || [];
+      // Soma aos já pausados: rodar duas vezes não pode "esquecer" o que precisa ser religado.
+      state.stoppedServices = [...new Set([...(state.stoppedServices || []), ...[].concat(parseJson(r.stdout, []) || [])])];
+      state.servicesBoot = bootTime();
     } else {
       const names = state.stoppedServices || SVC_LIST;
       await ps(`foreach ($s in @(${names.map((s) => `'${q(s)}'`).join(',')})) { try { Start-Service -Name $s -ErrorAction Stop } catch {} }`, 60000);
@@ -361,38 +371,47 @@ ConvertTo-Json -InputObject @($stopped) -Compress`, 60000);
   saveState(state);
   return { ok, msg };
 }
+// Momento do boot (arredondado) para saber se uma pausa de serviços já foi desfeita por um reinício.
+function bootTime() { return Math.round((Date.now() - os.uptime() * 1000) / 60000); }
 function listTweaks() {
-  const s = loadState().tweaks || {};
+  const st = loadState(); const s = { ...(st.tweaks || {}) };
+  if (s.services && Math.abs((st.servicesBoot || 0) - bootTime()) > 2) s.services = false;
   return TWEAKS.map((t) => ({ id: t.id, name: t.name, desc: t.desc, recommended: t.recommended, admin: !!t.admin, oneshot: !!t.oneshot, applied: !!s[t.id] }));
 }
 
 /* ------------------------------ otimizar tudo ------------------------------ */
-async function optimizeAll(progress) {
-  const emit = (step, label, extra = {}) => progress && progress({ step, label, ...extra });
+let running = null;
+function optimizeAll(progress) {
+  // Uma execução por vez; um segundo clique recebe o mesmo resultado.
+  if (!running) running = doOptimize(progress).finally(() => { running = null; });
+  return running;
+}
+async function doOptimize(progress) {
+  const emit = (step, extra = {}) => progress && progress({ step, ...extra });
   const freeBefore = os.freemem();
-  const result = { killed: 0, closed: [], junk: 0, ramFreed: 0, tweaks: 0, tweakErrors: 0 };
+  const admin = await isAdmin();
+  const result = { killed: 0, closed: [], junk: 0, ramFreed: 0, tweaks: 0, skipped: 0, admin };
 
-  emit(1, 'Fechando processos inúteis…');
+  emit(1);
   const k = await killAuto(); result.killed = k.killed; result.closed = k.closed;
-  emit(1, `${k.killed} processo(s) encerrado(s)`, { done: true });
+  emit(1, { done: true, value: k.killed });
 
-  emit(2, 'Aplicando ajustes de desempenho…');
+  emit(2);
   for (const t of TWEAKS.filter((x) => x.recommended)) {
+    if (t.admin && !admin) { result.skipped++; continue; }
     const r = await applyTweak(t.id, true);
-    if (r.ok) result.tweaks++; else result.tweakErrors++;
+    if (r.ok) result.tweaks++; else result.skipped++;
   }
-  emit(2, `${result.tweaks} ajuste(s) aplicado(s)`, { done: true });
+  emit(2, { done: true, value: result.tweaks });
 
-  emit(3, 'Limpando arquivos inúteis…');
+  emit(3);
   const j = await cleanJunk(); result.junk = j.freed;
-  emit(3, `${j.freed} bytes liberados`, { done: true, bytes: j.freed });
+  emit(3, { done: true, bytes: j.freed });
 
-  emit(4, 'Limpando a memória RAM…');
+  emit(4);
   const m = await cleanMemory();
   result.ramFreed = Math.max(m.freed, os.freemem() - freeBefore, 0); result.standbyPurged = m.standbyPurged;
-  emit(4, 'Memória otimizada', { done: true, bytes: result.ramFreed });
-
-  emit(5, 'Concluído', { done: true });
+  emit(4, { done: true, bytes: result.ramFreed });
   return result;
 }
 

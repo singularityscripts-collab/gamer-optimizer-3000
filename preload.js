@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   scanJunk: () => invoke('clean:scan'),
   cleanJunk: (ids) => invoke('clean:run', ids),
   startup: () => invoke('startup:list'),
-  setStartup: (hive, name, enable) => invoke('startup:set', hive, name, enable),
+  setStartup: (loc, name, enable) => invoke('startup:set', loc, name, enable),
   tweaks: () => invoke('tweaks:list'),
   setTweak: (id, on) => invoke('tweaks:set', id, on),
   optimizeAll: () => invoke('optimize:all'),

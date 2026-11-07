@@ -7,13 +7,15 @@ const REPO_URL = 'https://github.com/huginhohenriquerl-ops/gamer-optimizer-3000'
 let win = null;
 let updateState = { state: 'idle' };
 
-if (!app.requestSingleInstanceLock()) { app.quit(); }
+// Sem o lock, a segunda instância saía só depois de registrar IPC e abrir janela; agora sai na hora.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.exit(0);
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1120, height: 740, minWidth: 940, minHeight: 620,
-    frame: false, backgroundColor: '#0b0d17', show: false, title: 'Gamer Optimizer 3000',
+    width: 1080, height: 720, minWidth: 900, minHeight: 600,
+    frame: false, backgroundColor: '#0c0c0e', show: false, title: 'Gamer Optimizer 3000',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
@@ -57,7 +59,7 @@ function registerIpc() {
   ipcMain.handle('clean:scan', () => opt.scanJunk());
   ipcMain.handle('clean:run', (_e, ids) => opt.cleanJunk(Array.isArray(ids) ? ids.map(String) : null));
   ipcMain.handle('startup:list', () => opt.listStartup());
-  ipcMain.handle('startup:set', (_e, hive, name, enable) => opt.setStartup(String(hive), String(name), !!enable));
+  ipcMain.handle('startup:set', (_e, loc, name, enable) => opt.setStartup(String(loc), String(name), !!enable));
   ipcMain.handle('tweaks:list', () => opt.listTweaks());
   ipcMain.handle('tweaks:set', (_e, id, on) => opt.applyTweak(String(id), !!on));
   ipcMain.handle('optimize:all', (e) => opt.optimizeAll((p) => e.sender.send('opt:progress', p)));
@@ -68,7 +70,7 @@ function registerIpc() {
   ipcMain.handle('update:install', () => { if (updateState.state === 'ready') autoUpdater.quitAndInstall(false, true); });
 }
 
-app.whenReady().then(() => {
+if (gotLock) app.whenReady().then(() => {
   opt.init({ stateFile: path.join(app.getPath('userData'), 'state.json') });
   registerIpc();
   setupUpdater();

@@ -24,9 +24,9 @@ if (!window.api) {
     ],
     cleanJunk: async () => { await sleep(700); return { freed: 3 * GB }; },
     startup: async () => [
-      { name: 'OneDrive', cmd: 'C:\\Program Files\\OneDrive\\OneDrive.exe /background', scope: 'Usuário', hive: 'HKCU', enabled: true },
-      { name: 'Discord', cmd: 'C:\\Users\\x\\Discord\\Update.exe', scope: 'Usuário', hive: 'HKCU', enabled: true },
-      { name: 'RtkAudUService', cmd: 'C:\\Windows\\System32\\RtkAudUService64.exe', scope: 'Sistema', hive: 'HKLM', enabled: false },
+      { name: 'OneDrive', cmd: 'C:\\Program Files\\OneDrive\\OneDrive.exe /background', scope: 'Usuário', loc: 'hkcu', enabled: true },
+      { name: 'Discord', cmd: 'C:\\Users\\x\\Discord\\Update.exe', scope: 'Usuário', loc: 'hkcu', enabled: true },
+      { name: 'RtkAudUService', cmd: 'C:\\Windows\\System32\\RtkAudUService64.exe', scope: 'Sistema', loc: 'hklm', enabled: false },
     ],
     setStartup: async () => ({ ok: true }),
     tweaks: async () => [
@@ -39,7 +39,7 @@ if (!window.api) {
     setTweak: async () => ({ ok: true }),
     optimizeAll: async () => {
       for (let i = 1; i <= 4; i++) { listeners.p.forEach((f) => f({ step: i, label: '', })); await sleep(700); listeners.p.forEach((f) => f({ step: i, done: true })); }
-      return { killed: 9, closed: [], junk: 3.1 * GB, ramFreed: 1.4 * GB, tweaks: 8, tweakErrors: 0 };
+      return { killed: 9, closed: [], junk: 3.1 * GB, ramFreed: 1.4 * GB, tweaks: 8, skipped: 0, admin: true };
     },
     onProgress: (cb) => { listeners.p.push(cb); },
     appInfo: async () => ({ version: '1.0.0', packaged: false, update: { state: 'dev' } }),
