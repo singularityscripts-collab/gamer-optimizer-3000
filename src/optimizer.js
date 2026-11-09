@@ -6,31 +6,60 @@ const os = require('os');
 const path = require('path');
 
 let stateFile = null;
-function init(opts) { stateFile = opts.stateFile; }
-function loadState() { try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { return {}; } }
-function saveState(s) { try { fs.writeFileSync(stateFile, JSON.stringify(s, null, 2)); } catch { /* ignore */ } }
+let state = null; // cache em mem\u00f3ria: evita que duas opera\u00e7\u00f5es simult\u00e2neas sobrescrevam o estado uma da outra
+let log = () => {};
+function init(opts) { stateFile = opts.stateFile; if (opts.log) log = opts.log; }
+function loadState() {
+  if (!state) { try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { state = {}; } }
+  return state;
+}
+// Grava num arquivo tempor\u00e1rio e renomeia: uma queda no meio da escrita n\u00e3o corrompe o estado.
+function saveState(s) {
+  state = s;
+  if (!stateFile) return;
+  try { const tmp = stateFile + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(s, null, 2)); fs.renameSync(tmp, stateFile); }
+  catch (e) { log('warn', 'saveState: ' + e.message); }
+}
 
 /* ------------------------------ helpers ------------------------------ */
 function run(file, args, timeout = 120000) {
   return new Promise((resolve) => {
-    execFile(file, args, { windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout, encoding: 'utf8' },
-      (err, stdout, stderr) => resolve({ ok: !err, stdout: stdout || '', stderr: stderr || '', err }));
+    try {
+      execFile(file, args, { windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout, encoding: 'utf8' },
+        (err, stdout, stderr) => resolve({ ok: !err, stdout: stdout || '', stderr: stderr || '', err }));
+    } catch (err) { resolve({ ok: false, stdout: '', stderr: String(err.message || err), err }); }
   });
 }
 async function ps(script, timeout = 120000) {
-  const f = path.join(os.tmpdir(), `g3k-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`);
-  fs.writeFileSync(f, '\ufeff[Console]::OutputEncoding=[Text.Encoding]::UTF8\n' + script, 'utf8');
+  const f = path.join(os.tmpdir(), `g3k-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`);
+  try { fs.writeFileSync(f, '\ufeff[Console]::OutputEncoding=[Text.Encoding]::UTF8\n$ProgressPreference=\'SilentlyContinue\'\n' + script, 'utf8'); }
+  catch (e) { log('error', 'ps write: ' + e.message); return { ok: false, stdout: '', stderr: e.message }; }
   const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f], timeout);
   fs.unlink(f, () => {});
+  if (!r.ok) log('warn', `ps falhou: ${(r.stderr || (r.err && r.err.message) || '').slice(0, 300)}`);
   return r;
 }
 const q = (s) => String(s).replace(/'/g, "''");
-function parseJson(text, fallback) { try { const v = JSON.parse(text.trim()); return v; } catch { return fallback; } }
+function parseJson(text, fallback) {
+  try { const t = String(text).trim().replace(/^\ufeff/, ''); return t ? JSON.parse(t) : fallback; } catch { return fallback; }
+}
 
-let adminCache = null;
-async function isAdmin() {
-  if (adminCache === null) adminCache = (await run('net', ['session'], 8000)).ok;
-  return adminCache;
+// "net session" dava falso negativo quando o servi\u00e7o Servidor (LanmanServer) est\u00e1 desativado \u2014 algo comum em PCs "otimizados".
+let adminPromise = null;
+function isAdmin() {
+  if (!adminPromise) {
+    adminPromise = ps('([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)', 20000)
+      .then((r) => /true/i.test(r.stdout));
+  }
+  return adminPromise;
+}
+
+// O usu\u00e1rio est\u00e1 jogando / em tela cheia / apresentando? (usado pela otimiza\u00e7\u00e3o autom\u00e1tica)
+async function isUserBusy() {
+  const r = await ps(`Add-Type -Namespace G3K -Name N -MemberDefinition '[DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int s);'
+$s = 0; [void][G3K.N]::SHQueryUserNotificationState([ref]$s); Write-Output $s`, 20000);
+  const s = Number(r.stdout.trim());
+  return s === 2 || s === 3 || s === 4; // QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE
 }
 
 /* ------------------------------ estatísticas ------------------------------ */
@@ -148,6 +177,9 @@ public class M {
   [DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern bool LookupPrivilegeValue(string s, string n, out long l);
   [DllImport("advapi32.dll", SetLastError=true)] static extern bool AdjustTokenPrivileges(IntPtr t, bool d, ref TP n, int l, IntPtr p, IntPtr r);
   [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static int ForegroundPid() { uint p; GetWindowThreadProcessId(GetForegroundWindow(), out p); return (int)p; }
   [StructLayout(LayoutKind.Sequential, Pack=1)] struct TP { public int Count; public long Luid; public int Attr; }
   public static int Purge() {
     IntPtr t; if (!OpenProcessToken(GetCurrentProcess(), 0x28, out t)) return -1;
@@ -161,7 +193,9 @@ public class M {
 '@
 Add-Type -TypeDefinition $sig
 $n = 0
-Get-Process | ForEach-Object { try { if ([M]::EmptyWorkingSet($_.Handle)) { $n++ } } catch {} }
+# Não esvazia o processo em primeiro plano (ex.: o jogo aberto): forçaria page faults e engasgos.
+$fg = [M]::ForegroundPid()
+Get-Process | Where-Object { $_.Id -ne $fg -and $_.Id -ne $PID } | ForEach-Object { try { if ([M]::EmptyWorkingSet($_.Handle)) { $n++ } } catch {} }
 $purge = [M]::Purge()
 [GC]::Collect()
 Write-Output "TRIMMED=$n"
@@ -211,7 +245,10 @@ async function walkDir(dir, { minAge, match, dry }, depth = 0) {
     if (e.isDirectory()) {
       if (match && depth === 0) continue;
       bytes += await walkDir(p, { minAge, match, dry }, depth + 1);
-      if (!dry) { try { await fsp.rmdir(p); } catch { /* não vazia */ } }
+      // Só remove pastas vazias antigas: pastas recém-criadas podem estar sendo usadas por um instalador.
+      if (!dry) {
+        try { const st = await fsp.lstat(p); if (!minAge || Date.now() - st.mtimeMs >= minAge) await fsp.rmdir(p); } catch { /* não vazia */ }
+      }
     } else {
       if (match && !match.test(e.name)) continue;
       try {
@@ -332,7 +369,7 @@ async function applyTweak(id, on) {
     if (on) {
       const cur = await run('powercfg', ['/getactivescheme']);
       const m = /([0-9a-f-]{36})/i.exec(cur.stdout);
-      if (m && !state.prevPower) state.prevPower = m[1];
+      if (m && !state.prevPower && m[1].toLowerCase() !== state.ultimatePower) state.prevPower = m[1];
       // Reaproveita o plano criado antes: duplicar a cada execução enchia o Windows de planos repetidos.
       const list = (await run('powercfg', ['/list'])).stdout.toLowerCase();
       let guid = state.ultimatePower && list.includes(state.ultimatePower) ? state.ultimatePower : null;
@@ -348,6 +385,8 @@ async function applyTweak(id, on) {
     } else {
       const r = await run('powercfg', ['/setactive', state.prevPower || '381b4222-f694-41f0-9685-ff5bb260df2e']);
       ok = r.ok; msg = r.stderr;
+      if (ok) delete state.prevPower; // senão uma troca de plano feita depois seria desfeita para um plano antigo
+
     }
   } else if (id === 'services') {
     if (on) {
@@ -380,40 +419,49 @@ function listTweaks() {
 }
 
 /* ------------------------------ otimizar tudo ------------------------------ */
+const ALL_STEPS = { procs: true, tweaks: true, junk: true, memory: true };
 let running = null;
-function optimizeAll(progress) {
-  // Uma execução por vez; um segundo clique recebe o mesmo resultado.
-  if (!running) running = doOptimize(progress).finally(() => { running = null; });
+// Uma execução por vez (manual e automática compartilham): quem chamar durante uma execução recebe o mesmo resultado.
+function optimizeAll(progress, opts = {}) {
+  if (!running) running = doOptimize(progress, opts).finally(() => { running = null; });
   return running;
 }
-async function doOptimize(progress) {
-  const emit = (step, extra = {}) => progress && progress({ step, ...extra });
+function isOptimizing() { return !!running; }
+async function doOptimize(progress, { steps = ALL_STEPS, source = 'manual' } = {}) {
+  const emit = (step, extra = {}) => { try { progress && progress({ step, source, ...extra }); } catch { /* janela fechada */ } };
+  const t0 = Date.now();
   const freeBefore = os.freemem();
   const admin = await isAdmin();
-  const result = { killed: 0, closed: [], junk: 0, ramFreed: 0, tweaks: 0, skipped: 0, admin };
+  const result = { killed: 0, closed: [], junk: 0, ramFreed: 0, tweaks: 0, skipped: 0, admin, errors: [], source };
+  // Cada etapa é isolada: uma falha não interrompe as demais.
+  const step = async (n, enabled, fn) => {
+    if (!enabled) { emit(n, { done: true, skipped: true }); return; }
+    emit(n);
+    try { emit(n, { done: true, ...(await fn()) }); }
+    catch (e) { log('error', `etapa ${n}: ${e.stack || e}`); result.errors.push(n); emit(n, { done: true, error: true }); }
+  };
 
-  emit(1);
-  const k = await killAuto(); result.killed = k.killed; result.closed = k.closed;
-  emit(1, { done: true, value: k.killed });
-
-  emit(2);
-  for (const t of TWEAKS.filter((x) => x.recommended)) {
-    if (t.admin && !admin) { result.skipped++; continue; }
-    const r = await applyTweak(t.id, true);
-    if (r.ok) result.tweaks++; else result.skipped++;
-  }
-  emit(2, { done: true, value: result.tweaks });
-
-  emit(3);
-  const j = await cleanJunk(); result.junk = j.freed;
-  emit(3, { done: true, bytes: j.freed });
-
-  emit(4);
-  const m = await cleanMemory();
-  result.ramFreed = Math.max(m.freed, os.freemem() - freeBefore, 0); result.standbyPurged = m.standbyPurged;
-  emit(4, { done: true, bytes: result.ramFreed });
+  await step(1, steps.procs, async () => {
+    const k = await killAuto(); result.killed = k.killed; result.closed = k.closed; return { value: k.killed };
+  });
+  await step(2, steps.tweaks, async () => {
+    for (const t of TWEAKS.filter((x) => x.recommended)) {
+      if (t.admin && !admin) { result.skipped++; continue; }
+      const r = await applyTweak(t.id, true);
+      if (r.ok) result.tweaks++; else result.skipped++;
+    }
+    return { value: result.tweaks };
+  });
+  await step(3, steps.junk, async () => { const j = await cleanJunk(); result.junk = j.freed; return { bytes: j.freed }; });
+  await step(4, steps.memory, async () => {
+    const m = await cleanMemory();
+    result.ramFreed = Math.max(m.freed, os.freemem() - freeBefore, 0); result.standbyPurged = m.standbyPurged;
+    return { bytes: result.ramFreed };
+  });
+  result.ms = Date.now() - t0;
+  log('info', `otimização (${source}) concluída: ${JSON.stringify({ ...result, closed: result.closed.length })}`);
   return result;
 }
 
 module.exports = { init, getStats, listProcesses, killProcesses, cleanMemory, scanJunk, cleanJunk, listStartup, setStartup,
-  listTweaks, applyTweak, optimizeAll, isAdmin };
+  listTweaks, applyTweak, optimizeAll, isOptimizing, isAdmin, isUserBusy };

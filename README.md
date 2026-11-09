@@ -1,22 +1,28 @@
 # ⚡ Gamer Optimizer 3000
 
-Otimizador de PC para Windows com interface moderna. Um clique para deixar o computador mais leve e rápido.
+Otimizador de PC para Windows com interface minimalista. Um clique — ou nenhum, com a otimização automática — para deixar o computador mais leve e rápido.
+
+## Download
+
+Baixe na página de [Releases](https://github.com/singularityscripts-collab/gamer-optimizer-3000/releases/latest):
+
+- **`Gamer-Optimizer-3000-Setup-x.y.z.exe`** — instalador, com atualização automática.
+- **`Gamer-Optimizer-3000-Portable-x.y.z.exe`** — roda sem instalar (não se atualiza sozinho).
+
+> O executável não tem assinatura digital, então o Windows SmartScreen pode avisar na primeira execução: **Mais informações → Executar assim mesmo**.
 
 ## O que ele faz
 
-- **Otimizar tudo** – executa todo o pipeline abaixo de uma vez.
-- **Fecha tarefas inúteis** – OneDrive, Teams, Skype, updaters (Adobe, Google, Java), Widgets, Game Bar e similares. Processos do Windows são protegidos e nunca são encerrados. Outros apps (Discord, Chrome, Steam…) só fecham se você marcar.
-- **Limpa a RAM** – reduz o working set de todos os processos e, como administrador, esvazia a lista *standby*.
-- **Limpeza de arquivos** – temporários, Prefetch, cache do Windows Update, miniaturas, dumps/relatórios de erro, cache de shaders, cache de Chrome/Edge/Firefox e Lixeira (não toca em documentos, senhas ou histórico).
-- **Inicialização** – liga/desliga programas que abrem com o Windows.
-- **Ajustes para jogos** – plano de energia de desempenho máximo, Modo de Jogo, Game DVR off, mouse sem aceleração, prioridade multimídia/rede, pausa de serviços (SysMain, DiagTrack, WSearch…), apps em segundo plano, flush de DNS e efeitos visuais. Todos reversíveis.
-- **Auto update** – verifica o GitHub Releases ao abrir e a cada 4 h, baixa e instala sozinho.
+- **Otimizar** – encerra processos inúteis, aplica ajustes, limpa arquivos e libera RAM, em etapas isoladas (uma falha não interrompe as outras).
+- **Otimização automática** – roda a cada intervalo configurado (15 min a 24 h, ou personalizado), escolhendo quais etapas executar. Adia sozinha enquanto um jogo ou app está em tela cheia, notifica ao concluir e continua funcionando com a janela fechada (bandeja do sistema).
+- **Processos** – fecha lixo de segundo plano (OneDrive, Teams, updaters, Widgets…). Processos do Windows são protegidos; apps com janela aberta pedem confirmação.
+- **Memória** – compacta a memória dos processos (exceto o jogo em primeiro plano) e, como administrador, esvazia o cache standby.
+- **Limpeza** – temporários, Prefetch, cache do Windows Update, miniaturas, relatórios de erro, shaders, caches de navegador e Lixeira. Documentos, senhas e histórico não são tocados.
+- **Inicialização** – liga/desliga programas que abrem com o Windows (registro e pastas de Inicializar).
+- **Ajustes para jogos** – plano de energia, Modo de Jogo, Game DVR, mouse sem aceleração, prioridade multimídia, pausa de serviços, DNS e efeitos visuais. Todos reversíveis.
+- **Auto update** – verifica este repositório ao abrir e a cada 4 h, baixa em segundo plano e instala ao fechar (ou na hora, pela aba Atualização).
 
-> Dica: execute como administrador (o instalador já pede) para limpeza completa e ajustes avançados.
-
-## Instalar
-
-Baixe o `Gamer-Optimizer-3000-Setup-x.y.z.exe` na página de [Releases](../../releases/latest).
+Logs de diagnóstico ficam em `%APPDATA%\Gamer Optimizer 3000\logs\app.log` (botão **Abrir logs** na aba Atualização).
 
 ## Desenvolvimento
 
@@ -24,20 +30,18 @@ Baixe o `Gamer-Optimizer-3000-Setup-x.y.z.exe` na página de [Releases](../../re
 npm install
 node node_modules/electron/install.js   # baixa o binário do Electron
 npm start                               # roda o app
-npm run dist                            # gera o instalador em dist/
+npm run dist                            # gera instalador e versão portátil em dist/
 ```
 
-## Como funciona o auto update
-
-O app usa `electron-updater` apontando para os Releases deste repositório. Para publicar uma nova versão:
+## Publicar uma nova versão
 
 ```bash
-npm version patch          # ou minor / major — cria a tag vX.Y.Z
+npm version minor          # ou patch / major — cria a tag vX.Y.Z
 git push --follow-tags
 ```
 
-O workflow [`release.yml`](.github/workflows/release.yml) compila o instalador no GitHub Actions e publica o Release com o `latest.yml`. Quem já tem o app instalado recebe a atualização automaticamente.
+O workflow [`release.yml`](.github/workflows/release.yml) compila no GitHub Actions e publica o Release com `latest.yml`. Quem tem o app instalado recebe a atualização automaticamente.
 
 ## Aviso
 
-Use por sua conta e risco. O app só encerra processos de uma lista segura sem perguntar e nunca altera arquivos pessoais.
+Use por sua conta e risco. O app só encerra sozinho processos de uma lista segura e nunca altera arquivos pessoais.

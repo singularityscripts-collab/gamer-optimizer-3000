@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const invoke = (ch, ...a) => ipcRenderer.invoke(ch, ...a);
 const on = (ch, cb) => {
-  const fn = (_e, data) => cb(data);
+  const fn = (_e, data) => { try { cb(data); } catch (err) { console.error(ch, err); } };
   ipcRenderer.on(ch, fn);
   return () => ipcRenderer.removeListener(ch, fn);
 };
@@ -21,9 +21,15 @@ contextBridge.exposeInMainWorld('api', {
   setTweak: (id, on) => invoke('tweaks:set', id, on),
   optimizeAll: () => invoke('optimize:all'),
   onProgress: (cb) => on('opt:progress', cb),
+  onDone: (cb) => on('opt:done', cb),
+  getSettings: () => invoke('settings:get'),
+  setSettings: (patch) => invoke('settings:set', patch),
+  onSettings: (cb) => on('settings:changed', cb),
+  onAuto: (cb) => on('auto:status', cb),
   appInfo: () => invoke('app:info'),
   checkUpdate: () => invoke('update:check'),
   installUpdate: () => invoke('update:install'),
   onUpdate: (cb) => on('update:status', cb),
   openRepo: () => invoke('app:repo'),
+  openLogs: () => invoke('app:logs'),
 });

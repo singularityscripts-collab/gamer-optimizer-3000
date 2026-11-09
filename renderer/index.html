@@ -51,6 +51,7 @@
       <div class="metric" id="m-ram"><label>Memória</label><div class="num"><b>0</b><small>%</small></div><div class="line"><i></i></div><span class="sub"></span></div>
       <div class="metric" id="m-disk"><label>Disco</label><div class="num"><b>0</b><small>%</small></div><div class="line"><i></i></div><span class="sub"></span></div>
     </div>
+    <p class="auto-line" id="autoLine"></p>
     <p class="hint" id="adminHint" hidden>Executando sem administrador — alguns ajustes e limpezas serão pulados.</p>
   </section>
 
@@ -105,6 +106,47 @@
     <div class="list" id="tweakList"></div>
   </section>
 
+  <!-- Configurações -->
+  <section class="view" id="v-settings">
+    <div class="head"><div><h2>Configurações</h2><p>Deixe o PC se otimizar sozinho em segundo plano.</p></div></div>
+
+    <div class="group">
+      <label class="row static"><span></span>
+        <div class="t"><b>Otimização automática</b><small class="wrap" id="autoNext">—</small></div><span></span>
+        <input type="checkbox" class="switch" id="sAuto"></label>
+      <div class="auto-body" id="autoBody">
+        <div class="row static"><span></span>
+          <div class="t"><b>Repetir a cada</b><small class="wrap" id="autoLast"></small></div>
+          <span class="custom" id="sCustomWrap" hidden><input type="number" id="sCustom" min="5" max="10080" step="5"><em>min</em></span>
+          <select id="sInterval"></select></div>
+        <div class="row static steps-row"><span></span>
+          <div class="t"><b>O que fazer</b><small class="wrap">Ajustes do sistema só precisam ser aplicados uma vez, por isso começam desligados.</small></div><span></span>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" id="st-procs"><span>Processos</span></label>
+            <label class="chip"><input type="checkbox" id="st-junk"><span>Arquivos</span></label>
+            <label class="chip"><input type="checkbox" id="st-memory"><span>Memória</span></label>
+            <label class="chip"><input type="checkbox" id="st-tweaks"><span>Ajustes</span></label>
+          </div></div>
+        <label class="row static"><span></span>
+          <div class="t"><b>Adiar durante jogos</b><small class="wrap">Não otimiza enquanto um jogo ou app estiver em tela cheia — tenta de novo em 5 minutos.</small></div><span></span>
+          <input type="checkbox" class="switch" id="sBusy"></label>
+        <label class="row static"><span></span>
+          <div class="t"><b>Notificar ao concluir</b><small class="wrap">Mostra quanto foi liberado.</small></div><span></span>
+          <input type="checkbox" class="switch" id="sNotify"></label>
+      </div>
+    </div>
+
+    <h4 class="group-title">Aplicativo</h4>
+    <div class="group">
+      <label class="row static"><span></span>
+        <div class="t"><b>Continuar na bandeja ao fechar</b><small class="wrap">Necessário para a otimização automática rodar com a janela fechada.</small></div><span></span>
+        <input type="checkbox" class="switch" id="sTray"></label>
+      <label class="row static"><span></span>
+        <div class="t"><b>Iniciar com o Windows</b><small class="wrap">Abre minimizado na bandeja ao ligar o PC.</small></div><span></span>
+        <input type="checkbox" class="switch" id="sLogin"></label>
+    </div>
+  </section>
+
   <!-- Atualização -->
   <section class="view" id="v-update">
     <div class="head"><div><h2>Atualização</h2><p>O app procura novas versões no GitHub e se atualiza sozinho.</p></div></div>
@@ -116,6 +158,7 @@
         <button class="btn primary" id="updInstall" hidden>Reiniciar e instalar</button>
         <button class="btn" id="updCheck">Verificar agora</button>
         <button class="btn ghost" id="repo">GitHub ↗</button>
+        <button class="btn ghost" id="logs">Abrir logs</button>
       </div>
     </div>
   </section>
