@@ -52,7 +52,13 @@ function update(patch) {
   const next = get();
   if (patch && typeof patch === 'object') {
     if (patch.auto && typeof patch.auto === 'object') {
-      Object.assign(next.auto, patch.auto, { steps: { ...next.auto.steps, ...(patch.auto.steps || {}) } });
+      const pa = { ...patch.auto };
+      // Campo vazio ('' vira 0) ou texto inválido mantém o intervalo atual em vez de cair para 5 min ou 60 min.
+      if ('intervalMin' in pa) {
+        const n = Number(pa.intervalMin);
+        if (pa.intervalMin === '' || pa.intervalMin === null || typeof pa.intervalMin === 'boolean' || !Number.isFinite(n) || n <= 0) delete pa.intervalMin;
+      }
+      Object.assign(next.auto, pa, { steps: { ...next.auto.steps, ...(pa.steps || {}) } });
     }
     if ('closeToTray' in patch) next.closeToTray = patch.closeToTray;
     if ('launchAtLogin' in patch) next.launchAtLogin = patch.launchAtLogin;

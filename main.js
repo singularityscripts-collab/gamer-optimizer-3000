@@ -36,7 +36,7 @@ function send(ch, data) { if (win && !win.isDestroyed()) win.webContents.send(ch
 /* ------------------------------ janela ------------------------------ */
 function createWindow(show) {
   win = new BrowserWindow({
-    width: 1080, height: 720, minWidth: 900, minHeight: 600,
+    width: 1080, height: 720, minWidth: 900, minHeight: 540,
     frame: false, backgroundColor: '#0c0c0e', show: false, title: 'Gamer Optimizer 3000',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -131,7 +131,9 @@ function reschedule() {
   else {
     const now = Date.now(), every = s.auto.intervalMin * 60000;
     // Se já passou do horário (PC estava desligado), roda 2 min depois de abrir, não na hora.
-    auto.nextAt = auto.lastAt ? Math.max(auto.lastAt + every, now + 2 * 60000) : now + every;
+    // lastAt no futuro (relógio estava adiantado) travaria a automática até o relógio alcançar
+    const last = auto.lastAt ? Math.min(auto.lastAt, now) : null;
+    auto.nextAt = last ? Math.max(last + every, now + 2 * 60000) : now + every;
   }
   auto.postponed = false;
   buildTrayMenu(); send('auto:status', autoStatus());

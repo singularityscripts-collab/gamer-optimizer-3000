@@ -30,16 +30,23 @@ function run(file, args, timeout = 120000) {
     } catch (err) { resolve({ ok: false, stdout: '', stderr: String(err.message || err), err }); }
   });
 }
+// O script vai direto na linha de comando (-EncodedCommand), nunca num arquivo: um .ps1 em %TEMP% podia ser
+// trocado por outro programa entre a grava\u00e7\u00e3o e a execu\u00e7\u00e3o, e o app roda como administrador.
+const MAX_CMDLINE = 30000; // limite do Windows \u00e9 32767 caracteres
 async function ps(script, timeout = 120000) {
-  const f = path.join(os.tmpdir(), `g3k-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`);
-  try { fs.writeFileSync(f, '\ufeff[Console]::OutputEncoding=[Text.Encoding]::UTF8\n$ProgressPreference=\'SilentlyContinue\'\n' + script, 'utf8'); }
-  catch (e) { log('error', 'ps write: ' + e.message); return { ok: false, stdout: '', stderr: e.message }; }
-  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f], timeout);
-  fs.unlink(f, () => {});
+  const full = "[Console]::OutputEncoding=[Text.Encoding]::UTF8\n$ProgressPreference='SilentlyContinue'\n" + script;
+  const enc = Buffer.from(full, 'utf16le').toString('base64');
+  if (enc.length > MAX_CMDLINE) {
+    log('error', `script do PowerShell grande demais (${enc.length} caracteres codificados)`);
+    return { ok: false, stdout: '', stderr: 'script grande demais' };
+  }
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', enc], timeout);
   if (!r.ok) log('warn', `ps falhou: ${(r.stderr || (r.err && r.err.message) || '').slice(0, 300)}`);
   return r;
 }
-const q = (s) => String(s).replace(/'/g, "''");
+// Escapa para string entre aspas simples do PowerShell. Ele também aceita ‘ ’ ‚ ‛ como aspas simples,
+// então todas precisam ser duplicadas — senão um nome como "x’; comando; ’" executaria o comando.
+const q = (s) => String(s).replace(/['‘’‚‛]/g, '$&$&');
 function parseJson(text, fallback) {
   try { const t = String(text).trim().replace(/^\ufeff/, ''); return t ? JSON.parse(t) : fallback; } catch { return fallback; }
 }
@@ -59,7 +66,8 @@ async function isUserBusy() {
   const r = await ps(`Add-Type -Namespace G3K -Name N -MemberDefinition '[DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int s);'
 $s = 0; [void][G3K.N]::SHQueryUserNotificationState([ref]$s); Write-Output $s`, 20000);
   const s = Number(r.stdout.trim());
-  return s === 2 || s === 3 || s === 4; // QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE
+  // QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE e QUNS_APP (app da Store/Game Pass em tela cheia)
+  return s === 2 || s === 3 || s === 4 || s === 7;
 }
 
 /* ------------------------------ estatísticas ------------------------------ */
@@ -138,6 +146,8 @@ async function listProcesses() {
   const out = [];
   for (const g of groups.values()) {
     if (g.pids.includes(process.pid)) { g.kind = 'protected'; } else g.kind = classify(g.name, g.path);
+    // Com janela aberta o usuário está usando (ex.: Teams numa reunião): só fecha se ele marcar.
+    if (g.kind === 'auto' && g.title) g.kind = 'suggest';
     out.push(g);
   }
   return out.sort((a, b) => b.mem - a.mem);
@@ -399,7 +409,8 @@ ConvertTo-Json -InputObject @($stopped) -Compress`, 60000);
       state.stoppedServices = [...new Set([...(state.stoppedServices || []), ...[].concat(parseJson(r.stdout, []) || [])])];
       state.servicesBoot = bootTime();
     } else {
-      const names = state.stoppedServices || SVC_LIST;
+      // state.json fica na pasta do usuário: só aceita nomes da lista conhecida.
+      const names = (Array.isArray(state.stoppedServices) ? state.stoppedServices : SVC_LIST).filter((s) => SVC_LIST.includes(s));
       await ps(`foreach ($s in @(${names.map((s) => `'${q(s)}'`).join(',')})) { try { Start-Service -Name $s -ErrorAction Stop } catch {} }`, 60000);
       state.stoppedServices = [];
     }

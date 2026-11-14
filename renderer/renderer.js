@@ -174,23 +174,27 @@ async function loadProcesses() {
   try { procs = (await api.processes()).map((p) => ({ ...p, checked: p.kind === 'auto' })); } catch { procs = []; }
   renderProcs();
 }
-function renderProcs() {
+// Só o que a busca mostra conta para marcar, contar e encerrar: antes, itens escondidos pelo filtro também eram encerrados.
+function visibleProcs() {
   const q = $('#pSearch').value.trim().toLowerCase();
-  const list = procs.map((p, i) => ({ ...p, i })).filter((p) => !q || p.name.toLowerCase().includes(q) || (p.title || '').toLowerCase().includes(q));
+  return procs.map((p, i) => ({ ...p, i })).filter((p) => !q || p.name.toLowerCase().includes(q) || (p.title || '').toLowerCase().includes(q));
+}
+function renderProcs() {
+  const list = visibleProcs();
   $('#procList').innerHTML = list.length ? list.map((p, n) => `<label class="row${p.kind === 'protected' ? ' off' : ''}" style="--i:${n}">
       ${p.kind === 'protected' ? LOCK : `<input type="checkbox" data-i="${p.i}" ${p.checked ? 'checked' : ''}>`}
-      <div class="t"><b>${esc(p.name)}${p.count > 1 ? ` <span class="count">×${p.count}</span>` : ''}${KIND[p.kind] ? `<span class="tag ${p.kind}">${KIND[p.kind]}</span>` : ''}</b>
+      <div class="t"><b><span class="nm">${esc(p.name)}</span>${p.count > 1 ? ` <span class="count">×${p.count}</span>` : ''}${KIND[p.kind] ? `<span class="tag ${p.kind}">${KIND[p.kind]}</span>` : ''}</b>
       <small>${esc(p.title || p.path || 'Sistema')}</small></div>
       <span></span><span class="size">${fmt(p.mem)}</span></label>`).join('')
     : '<div class="empty">Nenhum processo encontrado.</div>';
   updateKillBtn();
 }
 function updateKillBtn() {
-  const n = procs.filter((p) => p.checked).length;
+  const n = visibleProcs().filter((p) => p.checked).length;
   $('#pKill').disabled = !n; $('#pKill').textContent = n ? `Encerrar ${n}` : 'Encerrar';
 }
 async function killSelected() {
-  const sel = procs.filter((p) => p.checked);
+  const sel = visibleProcs().filter((p) => p.checked);
   if (!sel.length) return;
   const withWindow = sel.filter((p) => p.title);
   const ok = await confirmBox(`Encerrar ${sel.length} processo(s)?`,
@@ -259,7 +263,7 @@ async function loadStartup() {
   skeleton($('#startList'), 6);
   try { startItems = await api.startup(); } catch { startItems = []; }
   $('#startList').innerHTML = startItems.length ? startItems.map((s, i) => `<label class="row${s.enabled ? '' : ' off'}" style="--i:${i}"><span></span>
-      <div class="t"><b>${esc(s.name)}<span class="tag">${esc(s.scope)}</span></b><small title="${esc(s.cmd)}">${esc(s.cmd)}</small></div>
+      <div class="t"><b><span class="nm">${esc(s.name)}</span><span class="tag">${esc(s.scope)}</span></b><small title="${esc(s.cmd)}">${esc(s.cmd)}</small></div>
       <span></span><input type="checkbox" class="switch" data-i="${i}" ${s.enabled ? 'checked' : ''}></label>`).join('')
     : '<div class="empty">Nenhum programa abre junto com o Windows.</div>';
 }
@@ -276,9 +280,9 @@ async function loadTweaks() {
   let list = [];
   try { list = await api.tweaks(); } catch (e) { $('#tweakList').innerHTML = '<div class="empty">Não foi possível carregar os ajustes.</div>'; return; }
   const admin = stats ? stats.admin : true;
-  $('#tweakList').innerHTML = list.map((t, i) => `<label class="row" style="--i:${i}"><span></span>
+  $('#tweakList').innerHTML = list.map((t, i) => `<${t.oneshot ? 'div' : 'label'} class="row" style="--i:${i}"><span></span>
     <div class="t"><b>${esc(t.name)}${t.admin ? '<span class="tag admin">admin</span>' : ''}${t.recommended ? '' : '<span class="tag">opcional</span>'}</b><small class="wrap">${esc(t.desc)}</small></div><span></span>
-    ${t.oneshot ? `<button class="btn" data-one="${t.id}">Executar</button>` : `<input type="checkbox" class="switch" data-id="${t.id}" ${t.applied ? 'checked' : ''} ${t.admin && !admin ? 'disabled title="Requer administrador"' : ''}>`}</label>`).join('');
+    ${t.oneshot ? `<button class="btn" data-one="${t.id}">Executar</button>` : `<input type="checkbox" class="switch" data-id="${t.id}" ${t.applied ? 'checked' : ''} ${t.admin && !admin ? 'disabled title="Requer administrador"' : ''}>`}</${t.oneshot ? 'div' : 'label'}>`).join('');
 }
 // Interruptor que chama o processo principal: em qualquer falha volta ao estado anterior e nunca fica travado desabilitado.
 async function toggleCall(c, fn, okMsg) {
@@ -410,7 +414,7 @@ $('#wMin').onclick = () => api.win.minimize(); $('#wMax').onclick = () => api.wi
 $('#optAll').onclick = optimizeAll;
 $('#pSearch').addEventListener('input', renderProcs);
 $('#procList').addEventListener('change', (e) => { const c = e.target.closest('input[data-i]'); if (c) { procs[c.dataset.i].checked = c.checked; updateKillBtn(); } });
-$('#pSelSuggest').onclick = () => { procs.forEach((p) => { if (p.kind === 'auto' || p.kind === 'suggest') p.checked = true; }); renderProcs(); };
+$('#pSelSuggest').onclick = () => { visibleProcs().forEach((p) => { if (p.kind === 'auto' || p.kind === 'suggest') procs[p.i].checked = true; }); renderProcs(); };
 $('#pKill').onclick = killSelected;
 $('#memClean').onclick = cleanMem;
 $('#cScan').onclick = scanJunk; $('#cRun').onclick = runClean;

@@ -126,7 +126,10 @@ main::-webkit-scrollbar { width: 10px; } main::-webkit-scrollbar-thumb { backgro
 .row:hover { background: linear-gradient(90deg, transparent, var(--surface) 12%, var(--surface) 88%, transparent); }
 .row.off { opacity: .45; }
 .row .t { min-width: 0; }
-.row .t b { font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.row .t b { font-weight: 500; display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* nomes vindos do sistema podem ser enormes: corta com reticências em vez de empurrar a coluna de memória */
+.row .t b .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .t b .tag, .row .t b .count { flex: none; }
 .row .t small { display: block; color: var(--faint); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .t small.wrap { white-space: normal; color: var(--muted); }
 .count { color: var(--faint); font-weight: 400; }
@@ -247,6 +250,17 @@ input[type=number] { width: 84px; } input[type=number]::-webkit-inner-spin-butto
 @keyframes zoom { from { opacity: 0; transform: scale(.96) translateY(6px); } }
 @keyframes toastIn { from { opacity: 0; transform: translateY(12px) scale(.96); } }
 @keyframes toastOut { to { opacity: 0; transform: translateY(8px); } }
+
+/* Janela baixa (zoom 150–200% ou tela pequena): a barra lateral compacta e rola em vez de esconder Configurações/Atualização */
+@media (max-height: 520px) {
+  .rail { overflow-y: auto; overflow-x: hidden; gap: 2px; padding: 4px 0 8px; scrollbar-width: none; }
+  .rail::-webkit-scrollbar { display: none; }
+  .nav { width: 34px; height: 34px; flex: none; }
+  .indicator { width: 34px; height: 34px; left: 15px; }
+  .indicator::before { left: -15px; top: 9px; }
+  .nav::after { display: none; } /* a dica flutuante seria cortada pela rolagem */
+  .rail .spacer { flex: 1 0 8px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
