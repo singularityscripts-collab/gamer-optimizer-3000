@@ -1,7 +1,7 @@
 {
   "name": "gamer-optimizer-3000",
   "productName": "Gamer Optimizer 3000",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Otimizador de PC para Windows: fecha tarefas inúteis, limpa a RAM, remove lixo e aplica ajustes de desempenho.",
   "main": "main.js",
   "author": "singularityscripts-collab",
